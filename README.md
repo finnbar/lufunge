@@ -18,7 +18,7 @@ lufunge code should probably be put into [[]] to have to avoid escaping the back
 
 these are the individual commands and an explanation of how to use this (copied from main.lua):
 
-<code>
+<pre>
 --[[
   NOTE TO SELF: good idea -> a lang that you give the start and end to, and it works out the process.
 
@@ -84,4 +84,4 @@ these are the individual commands and an explanation of how to use this (copied 
 
   this starts with two pointers, executes a() on one of them and then records the result as b ("=b"), then the second one checks b and records that value as c ("#b=c"), then kills the program if that is false. then the second pointer is set to c, and if that is false, the second pointer is killed, else they loop back to the start.
 ]]
-</code>
+</pre>
