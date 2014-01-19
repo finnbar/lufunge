@@ -1,353 +1,122 @@
---[[
-  NOTE TO SELF: good idea -> a lang that you give the start and end to, and it works out the process.
-
-  LuFunge: A Lua Funge Compiler Thingy.
-  Simply put:
-¬ @     start location, where a pointer can begin. will always start by going right. if another pointer hits it @ acts like >
-¬ <^>v  four directions, go in that direction
-¬ /     trigger: if "true" is carried turn right else turn left
-¬ \     reverse trigger: if "true" is carried turn left else turn right
-¬ ?     if false, kill this pointer. useful for ending the program
-¬ !     reverse the pointer (if it would be true, explicitly set it to false, else if it is false or nil, make it true)
-¬ 0-9   make the pointer equal to that value
-¬ ;     sync: wait until another pointer has reached another one of these, then go
-¬ |     jump: if given "true", jump to next one IN LINE (e.g. would skip ab: |ab|)
-¬ +     increment pointer by next var
-¬ -     decrement pointer by next var
-¬ =     set next variable to pointer
-¬ #     check if pointer is equal to next variable, and change pointer to true/false based on that
-¬ .     print pointer
-¬ %     modulus pointer with next var
-¬ *     multiply pointer by next var
-¬ $     divide pointer by next var
-¬ "     assume everything is a string literal rather than a command until the next " (side effect: pointer is cleared)
-¬ ~     lua code is contained in the tildas
-¬ £     to the power of
-¬ ]     greater than (changes pointer to true if so)
-¬ [     less than
-
-  Anything else:
-  if a reference to a function, do it!
-  if a variable, pointer equals it!
-  if a variable AND there was an = before it, variable equals pointer!
-  
-  Example code:
-
-  ~a,b,c = run(), check(), find()~
-
-  >0!?
-  c@av
-  \bc<
-  b
-  >0!?
-
-  this code would execute a(), go down, go left, execute b(). c() then if the pointer has a "true" value it will execute c() else b(). then it will make the pointer equal 0 and reverse that (so true -> false), and then quit as the ? is given a false. now for more example code!:
-
-  ~a,b,c,d,e,p = run(), compare(), check(), false, 0, "0"~
-
-  @4a;b;|0!?| v
-  @4; b;p|0!?|v
-  ^           <
-
-  function compare(arg,point) if d then if arg==e return true else p=false return false end else e=arg p=true d=true end --in short, first pointer to run this records its value as e. second pointer compares its value with e and returns true if they are the same
-
-  this example code starts two _pointers with 4 and then makes one of them run a(). then they both run b(), and if they are the same, p becomes true, so the second pointer returns true. if they are true, they jump over the 0!? (aka quit the program) and loop! however, this program can be written better with more advanced symbols:
-
-  ~a,b,c = run(),0,false~
-
-  @4a     ;v
-           =
-  @4;     #b=c;|0!?|v
-           >;c|0!?| v
-  ^                 <
-
-  this starts with two pointers, executes a() on one of them and then records the result as b ("=b"), then the second one checks b and records that value as c ("#b=c"), then kills the program if that is false. then the second pointer is set to c, and if that is false, the second pointer is killed, else they loop back to the start.
-]]
-
--- _var == global var used by the interpreter, shouldn't be displayed in the list of vars.
-
-_pointers = {} --work out where pointers are, and then record their positions
-_cols = {{255,0,0},{0,255,0},{0,0,255},{255,255,0},{255,0,255},{0,255,255}}
-_timer=0
-_sync=0
-
-function lufungeInit(code2)
-  do  --for local scopes
-    _height,_width = 0,0
-    local check=0
-    local luastrings=""
-    for i in string.gmatch(code2,"%b~~") do
-      luastrings=luastrings.."\n"..i
-    end
-    local luastrings = string.gsub(luastrings,"~","")
-    local code = string.gsub(code2,"%b~~","")
-    for i in string.gmatch(code,".") do
-      if i=="\n" or i=="\r" then
-        _height=_height+1
-        if check>=_width then _width=check end
-        check=0
-      else check=check+1 end
-    end
-    _height=_height+1 --last line
-    t={}
-    table.insert(t,{})
-    local p = 1
-    for i in string.gmatch(code,".") do
-      if i=="\n" or i=="\r" then table.insert(t,{}) p=p+1
-      else table.insert(t[p],i) end
-    end
-    for y=1,_height,1 do
-      local printString = ""
-      for x=1,#t[y] do
-        printString=printString..t[y][x]
-      end
-      print(printString)
-    end
-    print(luastrings.."\n")
-    loadstring(luastrings)()
-    print("")
-    local c=1
-    for y=1,_height do
-      for x=1,#t[y] do
-        if t[y][x]=="@" then 
-          print(x,y)
-          table.insert(_pointers,{})
-          _pointers[c].x=x
-          _pointers[c].y=y
-          _pointers[c].dir="right"
-          _pointers[c].val=false
-          _pointers[c].mode="norm"
-          c=c+1
-        end
-      end
-    end
-  end
-  print("")
-  return true --cheer
-end
-
-function lufungeStep()
---per pointer, move in dir, check square. square is PASSIVE (sets stuff but doesn't move the pointer)
-  for p in pairs(_pointers) do
-    if _pointers[p].mode~="_sync" then
-    	--movement!
-	    if _pointers[p].dir=="left" then
-	      if _pointers[p].x>1 then _pointers[p].x=_pointers[p].x-1 end
-	    elseif _pointers[p].dir=="right" then
-	      if _pointers[p].x<_width then _pointers[p].x=_pointers[p].x+1 end
-	    elseif _pointers[p].dir=="up" then
-	      if _pointers[p].y>1 then _pointers[p].y=_pointers[p].y-1 end
-	    elseif _pointers[p].dir=="down" then
-	      if _pointers[p].y<_height then _pointers[p].y=_pointers[p].y+1 end
-	    end
-	    --check square!
-	    local sq = t[_pointers[p].y][_pointers[p].x]
-	    if _pointers[p].mode~="string" and _pointers[p].mode~="jmp" then
-		    if sq=="^" or sq=="@" then
-		      _pointers[p].dir="up"
-		    elseif sq==">" then
-		      _pointers[p].dir="right"
-		    elseif sq=="<" then
-		      _pointers[p].dir="left"
-		    elseif sq=="v" then
-		      _pointers[p].dir="down"
-		    elseif sq:find("%d") then
-		      if _pointers[p].mode=="norm" then _pointers[p].val=sq end
-		      if _pointers[p].mode=="inc" then _pointers[p].val=_pointers[p].val+sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="dec" then _pointers[p].val=_pointers[p].val-sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="mul" then _pointers[p].val=_pointers[p].val*sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="div" then _pointers[p].val=_pointers[p].val/sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="mod" then _pointers[p].val=_pointers[p].val%sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="pow" then _pointers[p].val=_pointers[p].val^sq _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="com" then if tostring(_pointers[p].val)==tostring(sq) then _pointers[p].val=true else _pointers[p].val=false end _pointers[p].mode="norm" end
-		      if _pointers[p].mode=="gt" then if tonumber(_pointers[p].val)>tonumber(sq) then _pointers[p].val=true else _pointers[p].val=false end _pointers[p].mode="norm" end
-				  if _pointers[p].mode=="lt" then if tonumber(_pointers[p].val)<tonumber(sq) then _pointers[p].val=true else _pointers[p].val=false end _pointers[p].mode="norm" end
-		    elseif sq=="/" then
-		    	if _pointers[p].val then
-		    		local d=_pointers[p].dir
-		    		if d=="left" then _pointers[p].dir="up"  --staggered due to Lua weirdness
-		    		else 
-		    			if d=="up" then _pointers[p].dir="right"
-		    			else 
-		    				if d=="right" then _pointers[p].dir="down"
-		    				else 
-		    					if d=="down" then _pointers[p].dir="left" end
-		    				end
-		    			end
-		    		end
-		    	else
-		    		local d=_pointers[p].dir
-		    		if d=="left" then _pointers[p].dir="down"
-		    		else 
-		    			if d=="up" then _pointers[p].dir="left"
-		    			else
-		    				if d=="right" then _pointers[p].dir="up"
-		    				else
-		    					if d=="down" then _pointers[p].dir="right" end
-		    				end
-		    			end
-		    		end
-		    	end
-		    elseif sq==[[\]] then --used [[]] so I didn't have to deal with \\
-		    	if _pointers[p].val then
-		    		local d=_pointers[p].dir
-		    		if d=="left" then _pointers[p].dir="down"
-		    		else 
-		    			if d=="up" then _pointers[p].dir="left"
-		    			else 
-		    				if d=="right" then _pointers[p].dir="up"
-		    				else 
-		    					if d=="down" then _pointers[p].dir="right" end
-		    				end
-		    			end
-		    		end
-		    	else
-		    		local d=_pointers[p].dir
-		    		if d=="left" then _pointers[p].dir="up"
-		    		else 
-		    			if d=="up" then _pointers[p].dir="right"
-		    			else 
-		    				if d=="right" then _pointers[p].dir="down"
-		    				else
-		    					if d=="down" then _pointers[p].dir="left" end
-		    				end
-		    			end
-		    		end
-		    	end
-		    elseif sq=="?" then
-		    	if not _pointers[p].val then
-		    		_pointers[p]=nil
-		    	end
-		    elseif sq=="!" then
-		    	_pointers[p].val=not _pointers[p].val
-		    elseif sq=="+" then
-		    	_pointers[p].mode="inc"
-		    elseif sq=="-" then
-		    	_pointers[p].mode="dec"
-		    elseif sq=="." then
-		    	print(_pointers[p].val)
-		    elseif sq==[["]] then
-		    	_pointers[p].mode="string"
-		    elseif sq==[[%]] then
-		    	_pointers[p].mode="mod"
-		    elseif sq=="$" then
-		    	_pointers[p].mode="div"
-		    elseif sq=="*" then
-		    	_pointers[p].mode="mul"
-		    elseif sq=="£" then
-		    	_pointers[p].mode="pow"
-		    elseif sq=="|" then
-		    	if _pointers[p].val then _pointers[p].mode="jmp" end
-		    elseif sq=="#" then
-		    	_pointers[p].mode="com"
-		    elseif sq=="=" then
-		    	_pointers[p].mode="equ"
-		    elseif sq=="]" then _pointers[p].mode="gt"
-		    elseif sq=="[" then _pointers[p].mode="lt"
-		    elseif sq==";" then
-		    	if _sync==0 then _pointers[p].mode="_sync" _sync=1 else if _sync==1 then _sync=2 end end 
-		    elseif sq=="" then
-		    	--do nothing, just making sure a blank comes up in the below else
-		    else
-		    	if _pointers[p].mode=="norm" then
-			    	local v=_G[sq]
-			    	if type(_G[sq])=="function" then local b=v(_pointers[p].val) if b~=nil then _pointers[p].val=b end 
-			    	elseif v~=nil then _pointers[p].val=v end
-			    elseif _pointers[p].mode=="com" then
-			    	if type(_G[sq])=="function" then
-			    		if tostring(_pointers[p].val)==tostring(_G[sq]()) then _pointers[p].val=true else _pointers[p].val=false end
-			    	else
-				    	if tostring(_pointers[p].val)==tostring(_G[sq]) then _pointers[p].val=true else _pointers[p].val=false end
-				    	_pointers[p].mode="norm"
-				    end
-			    elseif _pointers[p].mode=="equ" then
-			    	_G[sq]=_pointers[p].val
-			    	_pointers[p].mode="norm"
-			    else
-			    	local v=_G[sq]
-			    	if v~=nil then
-				    	if _pointers[p].mode=="inc" then _pointers[p].val=_pointers[p].val+v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="dec" then _pointers[p].val=_pointers[p].val-v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="mul" then _pointers[p].val=_pointers[p].val*v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="div" then _pointers[p].val=_pointers[p].val/v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="mod" then _pointers[p].val=_pointers[p].val%v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="pow" then _pointers[p].val=_pointers[p].val^v _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="gt" then if tonumber(_pointers[p].val)>tonumber(v) then _pointers[p].val=true else _pointers[p].val=false end _pointers[p].mode="norm" end
-				      if _pointers[p].mode=="lt" then if tonumber(_pointers[p].val)<tonumber(v) then _pointers[p].val=true else _pointers[p].val=false end _pointers[p].mode="norm" end
-				    end
-			    end
-		    end
-		  else
-		  	if _pointers[p].mode=="string" then
-			  	if type(_pointers[p].val)~="string" then _pointers[p].val="" end
-			  	local v=t[_pointers[p].y][_pointers[p].x]
-			  	if v~=[["]] then _pointers[p].val=_pointers[p].val..t[_pointers[p].y][_pointers[p].x] end
-			  elseif _pointers[p].mode=="jmp" then
-			  	if t[_pointers[p].y][_pointers[p].x]=="|" then _pointers[p].mode="norm" end
-			  end
-		  end
-	  elseif _sync==2 then _pointers[p].mode="norm" _sync=0 end
-	end
-end
+require("lufunge")
+_deja = love.graphics.newFont("DejaVuSans.ttf")
+_dejalarge = love.graphics.newFont("DejaVuSans.ttf",30)
+_play,_ok,_err,_print,_vars,_prevPointers,_prevPrevs = false,true,"nil",{},0,{},{}
+_code = [[
+~a,b=2,2~
+  v   <        <
+       vb=1+b < 
+  a    > b#a   \
+  .   / b[2$a  <
+@2>+1v>>a%b#0!\ 
+  a  = b        
+     a =        
+     >2^        
+  ^           < 
+~print(a)~]]
+-- _code = [[
+-- ~a,b=function(p)if p==100 then p=0 end return love.math.random(p,100) end,0~
+--   v       <
+--   v b=0  < 
+-- @1>a;#b  \b
+-- @1>a=b;.v>^
+--   ^     <
+-- ]]
 
 function love.load()
---   lufungeInit([[
--- ~a,b=2,2~
---   v   <        <
---        vb=1+b < 
---   a    > b#a   \
---   .   / b[2$a  <
--- @2>+1v>>a%b#0!\ 
---   a  = b        
---      a =        
---      >2^        
---   ^           < 
--- ~print(a)~]])
-	lufungeInit([[
-~a,b=function(p)if p==100 then p=0 end return love.math.random(p,100) end,0~
-  v       <
-  v b=0  < 
-@1>a;#b  \b
-@1>a=b;.v>^
-  ^     <
-]])
+	love.graphics.setFont(_deja)
+  lufungeInit(_code,true)
 end
 
 function love.draw()
   love.graphics.setColor(255,255,255)
+  love.graphics.print("lufunge interpreter",320,4)
+  if love.mouse.getX()>0 and love.mouse.getX()<15 and love.mouse.getY()>0 and love.mouse.getY()<15 then love.graphics.setColor(255,0,0) end   
+  love.graphics.print("X",4,4)
+  love.graphics.setColor(255,255,255)
+  if love.mouse.getX()>14 and love.mouse.getX()<30 and love.mouse.getY()>0 and love.mouse.getY()<25 then love.graphics.setColor(0,255,0) end
+  love.graphics.print("▷",15,3)
+  love.graphics.setColor(255,255,255)
+  for p in pairs(_pointers) do
+    love.graphics.setColor(_cols[p%6])
+    love.graphics.rectangle("fill", _pointers[p].x*40-20,_pointers[p].y*40,40,40)
+    love.graphics.print(tostring(_pointers[p].val)..", "..tostring(_pointers[p].dir)..", "..tostring(t[_pointers[p].y][_pointers[p].x]),(120*p)-110,600)
+  end
+  for p in pairs(_prevPointers) do
+    love.graphics.setColor({_cols[p%6][1],_cols[p%6][2],_cols[p%6][3],125})
+    love.graphics.rectangle("fill", _prevPointers[p].x*40-20,_prevPointers[p].y*40,40,40)
+  end
+  for p in pairs(_prevPrevs) do
+    love.graphics.setColor({_cols[p%6][1],_cols[p%6][2],_cols[p%6][3],65})
+    love.graphics.rectangle("fill", _prevPrevs[p].x*40-20,_prevPrevs[p].y*40,40,40)
+  end
+  love.graphics.setColor(255,255,255,255)
   if t~=nil then
     for y=1,_height do
       for x=1,#t[y] do
-        love.graphics.print(t[y][x],x*40,y*40)
+        love.graphics.print(t[y][x],x*40,(y*40)+20)
       end
     end
   end
   for y=1,_height do
     for x=1,_width,1 do
-      love.graphics.rectangle("line", x*40-20, y*40-20, 40, 40)
+      love.graphics.rectangle("line", x*40-20, y*40, 40, 40)
     end
   end
-  for p in pairs(_pointers) do
-    love.graphics.setColor(_cols[p%6])
-    love.graphics.rectangle("line", _pointers[p].x*40-20,_pointers[p].y*40-20,40,40)
-    love.graphics.print(tostring(_pointers[p].val)..", ".._pointers[p].dir..", "..t[_pointers[p].y][_pointers[p].x],(120*p)-110,580)
-  end
-  local c=1
+  local c,prev,val=2,"",0
   love.graphics.setColor(255,255,255)
+  _vars=0
   for i,v in pairs(_G) do
   	if type(v)~="table" and type(v)~="function" then
   		if not tostring(i):find("^_") then
-	  		love.graphics.print(i.."="..tostring(v),670,c*20)
-	  		c=c+1
+  			if prev~="" then
+  				local var1,var2
+  				if type(v)=="string" then
+  					var1=i.."=\""..tostring(v).."\""
+  				else var1=i.."="..tostring(v) end
+  				if type(val)=="string" then
+  					var2=prev.."=\""..tostring(val).."\""
+  				else var2=prev.."="..tostring(val) end
+		  		love.graphics.print(var1.." "..var2,670,(c*20))
+		  		c=c+1
+		  		prev=""
+		  		val=0
+		  	else prev=i val=v end
+	  		_vars=_vars+1
 	  	end
   	end
   end
-end
-
-function love.keypressed(key, isrepeat)
-  lufungeStep()
+  love.graphics.print("print:",670,(c*20))
+  c=c+1
+  for i=#_print,1,-1 do
+  	love.graphics.print(tostring(_print[i]),670,(c*20))
+  	c=c+1
+  end
+  if not _ok then
+  	_play=false
+  	love.graphics.setColor(0,0,0)
+  	love.graphics.rectangle("fill", 10, 100, 660, 120)
+  	love.graphics.setColor(255,255,255)
+  	love.graphics.setFont(_dejalarge)
+  	love.graphics.printf("AN ERROR WAS RAISED: ".._err,20,100,650,"center")
+  end
+  love.graphics.setFont(_deja)
 end
 
 function love.update(dt)
-	lufungeStep()
+	if _play then 
+		_ok,_err = pcall(lufungeStep)
+	end
+	if #_print>(21-_vars) then
+		table.remove(_print,1)
+	end
+end
+
+function love.mousepressed(x, y, button)
+	if button=="l" and x<15 and x>0 and y<15 and y>0 then
+		love.event.quit()
+	elseif button=="l" and x<30 and x>14 and y<15 and y>0 then
+		_play=not _play
+		if _play and _err then lufungeInit(_code,true) end
+	elseif button=="l" then _ok=true end
 end
