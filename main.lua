@@ -1,3 +1,5 @@
+--todo: magnification when mouseovered
+
 require("lufunge")
 local gamera = require("gamera")
 local cam = gamera.new(0,0,800,620)
@@ -65,7 +67,9 @@ function love.draw()
 		if t~=nil then
 			for y=1,_height do
 				for x=1,#t[y] do
-					love.graphics.print(t[y][x],x*_size,(y*_size)+(_size/2))
+					if t[y][x]~=nil then
+						love.graphics.print(t[y][x],x*_size,(y*_size)+(_size/2))
+					end
 				end
 			end
 		end
@@ -173,11 +177,10 @@ function genCode()
 	if t~=nil then
 		for y=1,_height do
 			for x=1,#t[y] do
-				newCode=newCode..t[y][x]
+				if t[y][x]~="" and t[y][x]~=nil then newCode=newCode..t[y][x] else newCode=newCode.." " end
 			end
-			newCode=newCode.."\r"
+			if y~=_height then newCode=newCode.."\r" end
 		end
 	end
-	love.filesystem.write("code.lufunge", newCode,all)
 	return newCode
 end
