@@ -28,6 +28,7 @@
 	if a reference to a function, do it!
 	if a variable, pointer equals it!
 	if a variable AND there was an = before it, variable equals pointer!
+	if there's no square there, bounce back! :D
 	
 	Example code:
 
@@ -127,6 +128,25 @@ function lufungeInit(code2,newPointers)
 	return true --cheer
 end
 
+function bounce(p)
+	if _pointers[p].dir=="left" then _pointers[p].dir="right"
+	elseif _pointers[p].dir=="right" then _pointers[p].dir="left"
+	elseif _pointers[p].dir=="up" then _pointers[p].dir="down"
+	elseif _pointers[p].dir=="down" then _pointers[p].dir="up"
+	end
+	for x=1,2 do --bounce!
+		if _pointers[p].dir=="left" then
+			if _pointers[p].x>1 then _pointers[p].x=_pointers[p].x-1 end
+		elseif _pointers[p].dir=="right" then
+			if _pointers[p].x<_width then _pointers[p].x=_pointers[p].x+1 end
+		elseif _pointers[p].dir=="up" then
+			if _pointers[p].y>1 then _pointers[p].y=_pointers[p].y-1 end
+		elseif _pointers[p].dir=="down" then
+			if _pointers[p].y<_height then _pointers[p].y=_pointers[p].y+1 end
+		end
+	end
+end
+
 function lufungeStep()
 --per pointer, move in dir, check square. square is PASSIVE (sets stuff but doesn't move the pointer)
 	for p in pairs(_pointers) do
@@ -137,17 +157,19 @@ function lufungeStep()
 			for p in pairs(_pointers) do table.insert(_prevPointers,{x=_pointers[p].x,y=_pointers[p].y}) end
 			--movement!
 			if _pointers[p].dir=="left" then
-				if _pointers[p].x>1 then _pointers[p].x=_pointers[p].x-1 end
+				if _pointers[p].x>1 then _pointers[p].x=_pointers[p].x-1 else bounce(p) end
 			elseif _pointers[p].dir=="right" then
-				if _pointers[p].x<_width then _pointers[p].x=_pointers[p].x+1 end
+				if _pointers[p].x<_width then _pointers[p].x=_pointers[p].x+1 else bounce(p) end
 			elseif _pointers[p].dir=="up" then
-				if _pointers[p].y>1 then _pointers[p].y=_pointers[p].y-1 end
+				if _pointers[p].y>1 then _pointers[p].y=_pointers[p].y-1 else bounce(p) end
 			elseif _pointers[p].dir=="down" then
-				if _pointers[p].y<_height then _pointers[p].y=_pointers[p].y+1 end
+				if _pointers[p].y<_height then _pointers[p].y=_pointers[p].y+1 else bounce(p) end
 			end
 			--check square!
 			local sq = t[_pointers[p].y][_pointers[p].x]
-			if sq==nil then error("the square you are trying to go to doesn't exist") end
+			if sq==nil then
+				bounce(p)
+			end
 			if _pointers[p].mode~="string" and _pointers[p].mode~="jmp" then
 				if sq=="^" or sq=="@" then
 					_pointers[p].dir="up"
@@ -157,7 +179,7 @@ function lufungeStep()
 					_pointers[p].dir="left"
 				elseif sq=="v" then
 					_pointers[p].dir="down"
-				elseif sq:find("%d") then
+				elseif type(sq)=="string" and sq:find("%d") then
 					if _pointers[p].mode=="norm" then _pointers[p].val=sq end
 					if _pointers[p].mode=="inc" then _pointers[p].val=_pointers[p].val+sq _pointers[p].mode="norm" end
 					if _pointers[p].mode=="dec" then _pointers[p].val=_pointers[p].val-sq _pointers[p].mode="norm" end

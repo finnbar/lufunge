@@ -1,5 +1,3 @@
---todo: magnification when mouseovered
-
 require("lufunge")
 local gamera = require("gamera")
 local cam = gamera.new(0,0,800,620)
@@ -42,8 +40,9 @@ function love.draw()
 	love.graphics.print("-",37,3)
 	cam:draw(function()
 		if _xp~=nil and _yp~=nil then
-			--love.graphics.circle("fill",_xp*_size,_yp*_size,5)
-			love.graphics.polygon("fill",{_xp*_size,_yp*_size+10,_xp*_size-5,_yp*_size-5,_xp*_size+5,_yp*_size-5})
+			if _xp>0 and _yp>0 and _xp<_width+1 and _yp<_height+1 then
+				love.graphics.polygon("fill",{_xp*_size,_yp*_size+10,_xp*_size-5,_yp*_size-5,_xp*_size+5,_yp*_size-5})
+			end
 		end
 		love.graphics.setColor(255,255,255)
 		love.graphics.setFont(_deja)
@@ -155,7 +154,7 @@ function love.mousepressed(x, y, button)
 		_xp=_xp-(_size/2)
 		_xp=math.floor(_xp/_size)+1
 		_yp=math.floor(_yp/_size)
-		if _yp>0 and _yp<_height+1 and _xp>0 and _xp<_width+1 then t[_yp][_xp]="" _code=genCode() end
+		if _yp>0 and _yp<_height+1 and _xp>0 and _xp<_width+1 then t[_yp][_xp]=" " _code=genCode() end
 	elseif button=="wu" then _zoom=_zoom+0.2
 	elseif button=="wd" then _zoom=_zoom-0.2
 	end
@@ -182,5 +181,6 @@ function genCode()
 			if y~=_height then newCode=newCode.."\r" end
 		end
 	end
+	love.filesystem.write("code.lufunge",newCode,all)
 	return newCode
 end
